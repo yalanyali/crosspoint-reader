@@ -37,6 +37,7 @@
 #include "UserProfile.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
+#include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
@@ -396,10 +397,18 @@ void SettingsActivity::toggleSelectedSetting() {
         return;
       }
       case SettingAction::Profile: {
-        static_assert(UserProfile::COUNT == 2, "One option per profile, then Cancel");
-        static constexpr StrId OPTIONS[] = {StrId::STR_PROFILE_1, StrId::STR_PROFILE_2, StrId::STR_CANCEL};
-        optionPopup.show(StrId::STR_PROFILE, OPTIONS, 3, UserProfile::active(), [](const int idx) {
-          if (idx >= UserProfile::COUNT || idx == UserProfile::active()) return;
+        // One option per profile, then Rename (the active profile) and Cancel.
+        std::vector<std::string> options;
+        options.reserve(UserProfile::COUNT + 2);
+        for (uint8_t i = 0; i < UserProfile::COUNT; i++) options.push_back(UserProfile::name(i));
+        options.emplace_back(tr(STR_RENAME));
+        options.emplace_back(tr(STR_CANCEL));
+        optionPopup.show(StrId::STR_PROFILE, options, UserProfile::active(), [this](const int idx) {
+          if (idx == UserProfile::COUNT) {
+            openProfileRename();
+            return;
+          }
+          if (idx > UserProfile::COUNT || idx == UserProfile::active()) return;
           SETTINGS.saveToFile();
           APP_STATE.saveToFile();
           if (!UserProfile::setActive(static_cast<uint8_t>(idx))) return;
@@ -465,6 +474,24 @@ void SettingsActivity::syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChan
   }
 }
 
+void SettingsActivity::openProfileRename() {
+  const uint8_t profile = UserProfile::active();
+  auto keyboard = makeUniqueNoThrow<KeyboardEntryActivity>(
+      renderer, mappedInput, tr(STR_RENAME), UserProfile::name(profile), UserProfile::MAX_NAME_LENGTH, InputType::Text);
+  if (!keyboard) {
+    LOG_ERR("SETTINGS", "OOM: profile rename keyboard");
+    return;
+  }
+  startActivityForResult(std::move(keyboard), [this, profile](const ActivityResult& result) {
+    if (!result.isCancelled) {
+      // The render task reads the name for the Profile row.
+      RenderLock lock;
+      UserProfile::setName(profile, std::get<KeyboardResult>(result.data).text);
+    }
+    requestUpdate();
+  });
+}
+
 void SettingsActivity::openSleepTimeoutPicker() {
   startActivityForResult(
       std::make_unique<IntervalSelectionActivity>(
@@ -484,7 +511,7 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
   if (setting.action == SettingAction::HomeButton) return tr(STR_CONFIGURE);
   if (setting.action == SettingAction::Plugins) return SETTINGS.pluginsEnabled ? tr(STR_ENABLED) : tr(STR_DISABLED);
   if (setting.action == SettingAction::Profile) {
-    return I18N.get(UserProfile::active() == 0 ? StrId::STR_PROFILE_1 : StrId::STR_PROFILE_2);
+    return UserProfile::name(UserProfile::active());
   }
   if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
     // Guard like the valueGetter branch below: a corrupt/migrated settings
@@ -542,6 +569,17 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
       GUI.setCheckboxRow(rowItems_[i], checked);
     } else {
       rowValues_[i] = settingValueText(setting);
+      if (setting.action == SettingAction::Profile) {
+        // A profile name can be wide; keep it to half the row so the label still shows.
+        fui::TextStyle style = screen.theme().smallText;
+        style.maxLines = 1;
+        const fui::Rect slot{0, 0, static_cast<int16_t>(renderer.getScreenWidth() / 2),
+                             screen.target().lineHeight(style.font)};
+        std::string fitted;
+        fui::layoutText(screen.target(), slot, rowValues_[i].c_str(), style,
+                        [&](const char* line, fui::Rect) { fitted = line; });
+        if (!fitted.empty()) rowValues_[i] = std::move(fitted);
+      }
       rowItems_[i].value = rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
     }
   }

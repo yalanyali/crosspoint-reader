@@ -202,6 +202,7 @@ class SettingsActivity final : public UiListActivity {
   void rebuildSettings();
   void rebuildRowItems();
   void toggleSelectedSetting();
+  void openProfileRename();
   void openSleepTimeoutPicker();
   void applyUiSettingChange(uint8_t CrossPointSettings::* valuePtr);
   void syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged);

@@ -367,10 +367,10 @@ Settings are grouped into **System**, **Display**, **Reader**, **Controls**, **L
 
 - **Language**: Set the UI language. CrossPoint supports 32 languages: English, Spanish, French, German, Czech, Brazilian Portuguese, European Portuguese, Russian, Swedish, Romanian, Catalan, Ukrainian, Belarusian, Italian, Polish, Finnish, Danish, Dutch, Turkish, Kazakh, Hungarian, Lithuanian, Slovenian, Valencian, Hebrew, Arabic, Slovak, Bosnian, Vietnamese, Norwegian Bokmål, Indonesian, and Orangutan.
 
-- <a id="profiles"></a>**Profile**: Switch between **Profile 1** and **Profile 2**, for example when two people share one device. The device restarts into the selected profile.
+- <a id="profiles"></a>**Profile**: Switch between **Profile 1** and **Profile 2**, for example when two people share one device. The list shows each profile's name, and the device restarts into the selected profile. Choose **Rename** to name the current profile (up to 24 characters, fewer with accented or non-Latin letters; clear the name to go back to the default).
   - Each profile has its own books, settings, reading position, recent books, Library index, clippings export, screenshots, and folder for finished books. Books one profile adds through Browse Files, the web file manager, WebDAV, Calibre, or OPDS are not shown to the other profile.
   - Shared by both profiles: Wi-Fi networks, OPDS servers, CrossPoint Sync account, fonts, dictionaries, sleep images, plugins, and the reading cache (**Clear Reading Cache** clears it for both).
-  - Profile 1 uses the SD card root, as before. Profile 2 keeps its books and settings in the hidden `/.profiles/2` folder, and the selected profile is stored in `/.crosspoint/profile`.
+  - Profile 1 uses the SD card root, as before. Profile 2 keeps its books and settings in the hidden `/.profiles/2` folder, and the selected profile and the profile names are stored in `/.crosspoint/profiles.json`.
   - Profiles keep libraries apart; they are not a lock. There is no PIN, and anyone with the SD card on a computer (or in **USB Drive** mode) can see both folders.
   - To add fonts while Profile 2 is active, use the **Fonts** page of the web interface. The file manager would put a `fonts` folder inside the profile, where the device does not look for fonts.
 
@@ -818,4 +818,4 @@ Press **Ctrl-C** or close the graph window to exit.
 
 If the device is stuck in a bootloop, press and release the Reset button. Then, press and hold on to the configured Back button and the Power Button to boot to the Home Screen.
 
-There can be issues with broken cache or config. In this case, delete the `.crosspoint` directory on your SD card (or consider deleting only `settings.json`, `state.json`, or `epub_*` cache directories in the `.crosspoint/` folder). Profile 2 keeps its own `settings.json` and `state.json` in `/.profiles/2/.crosspoint/`. Deleting `/.crosspoint` also returns the device to Profile 1.
+There can be issues with broken cache or config. In this case, delete the `.crosspoint` directory on your SD card (or consider deleting only `settings.json`, `state.json`, or `epub_*` cache directories in the `.crosspoint/` folder). Profile 2 keeps its own `settings.json` and `state.json` in `/.profiles/2/.crosspoint/`. Deleting `/.crosspoint` also returns the device to Profile 1 and clears the profile names.

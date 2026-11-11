@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -13,6 +14,8 @@
 class UserProfile {
  public:
   static constexpr uint8_t COUNT = 2;
+  // In bytes of UTF-8, so it fits the settings row and the switch popup.
+  static constexpr size_t MAX_NAME_LENGTH = 24;
 
   // Reads the active profile. Call after Storage.begin() and before loading
   // any per-profile store.
@@ -21,6 +24,11 @@ class UserProfile {
   // Saves the profile to use from the next boot; the caller restarts so every
   // store reloads. Until then the running profile stays active.
   static bool setActive(uint8_t index);
+
+  // The name the user gave the profile, or "Profile N" when it has none.
+  static std::string name(uint8_t index);
+  // Saves a new name; an empty one restores the default.
+  static bool setName(uint8_t index, const std::string& name);
 
   // "/" for profile 0, otherwise the profile's folder ("/.profiles/2").
   static const char* libraryRoot();

@@ -1,14 +1,17 @@
 #include "UserProfile.h"
 
 #include <HalStorage.h>
+#include <I18n.h>
 #include <Logging.h>
+#include <PersistableStore.h>
 
 #include <cstring>
 
 namespace {
 
 // Device-wide, so it stays in /.crosspoint whichever profile is active.
-constexpr char ACTIVE_PROFILE_FILE[] = "/.crosspoint/profile";
+// {"active": 1, "names": ["", ""]}; "active" counts from 1.
+constexpr char PROFILES_FILE[] = "/.crosspoint/profiles.json";
 
 struct ProfilePaths {
   const char* root;
@@ -24,17 +27,37 @@ constexpr ProfilePaths PATHS[UserProfile::COUNT] = {
      "/.profiles/2/.crosspoint/state.json", "/.profiles/2/.crosspoint/recent.json"},
 };
 
+constexpr StrId DEFAULT_NAMES[UserProfile::COUNT] = {StrId::STR_PROFILE_1, StrId::STR_PROFILE_2};
+
 uint8_t activeIndex = 0;
+// The profile the next boot starts in. Differs from activeIndex between a switch
+// and its restart, or when the saved profile could not be opened at boot.
+uint8_t savedIndex = 0;
+std::string names[UserProfile::COUNT];
+
+bool save() {
+  JsonDocument doc;
+  doc["active"] = savedIndex + 1;
+  JsonArray list = doc["names"].to<JsonArray>();
+  for (const auto& name : names) list.add(name);
+  return PersistableStoreBase::writeDocToFile(PROFILES_FILE, doc);
+}
 
 }  // namespace
 
 void UserProfile::load() {
-  char buf[4] = {};
   activeIndex = 0;
-  if (Storage.exists(ACTIVE_PROFILE_FILE) && Storage.readFileToBuffer(ACTIVE_PROFILE_FILE, buf, sizeof(buf)) > 0) {
-    const int index = buf[0] - '1';
+  JsonDocument doc;
+  if (PersistableStoreBase::readDocFromFile(PROFILES_FILE, doc)) {
+    const int index = (doc["active"] | 1) - 1;
     if (index >= 0 && index < COUNT) activeIndex = static_cast<uint8_t>(index);
+    JsonArrayConst list = doc["names"].as<JsonArrayConst>();
+    for (uint8_t i = 0; i < COUNT && i < list.size(); i++) {
+      const char* stored = list[i] | "";
+      if (strlen(stored) <= MAX_NAME_LENGTH) names[i] = stored;
+    }
   }
+  savedIndex = activeIndex;
   if (activeIndex != 0 && !Storage.ensureDirectoryExists(PATHS[activeIndex].dataDir)) {
     LOG_ERR("PROFILE", "Cannot create %s, using profile 1", PATHS[activeIndex].dataDir);
     activeIndex = 0;
@@ -46,13 +69,29 @@ uint8_t UserProfile::active() { return activeIndex; }
 
 bool UserProfile::setActive(const uint8_t index) {
   if (index >= COUNT) return false;
-  Storage.mkdir("/.crosspoint");
-  const char value[2] = {static_cast<char>('1' + index), '\0'};
-  if (!Storage.writeFile(ACTIVE_PROFILE_FILE, value)) {
-    LOG_ERR("PROFILE", "Failed to save active profile");
-    return false;
-  }
-  return true;
+  const uint8_t previous = savedIndex;
+  savedIndex = index;
+  if (save()) return true;
+  savedIndex = previous;
+  return false;
+}
+
+std::string UserProfile::name(const uint8_t index) {
+  if (index >= COUNT) return {};
+  return names[index].empty() ? I18N.get(DEFAULT_NAMES[index]) : names[index];
+}
+
+bool UserProfile::setName(const uint8_t index, const std::string& name) {
+  if (index >= COUNT) return false;
+  const size_t first = name.find_first_not_of(' ');
+  std::string trimmed = first == std::string::npos ? "" : name.substr(first, name.find_last_not_of(' ') - first + 1);
+  if (trimmed.size() > MAX_NAME_LENGTH || trimmed == I18N.get(DEFAULT_NAMES[index])) trimmed.clear();
+  if (trimmed == names[index]) return true;
+  std::string previous = std::move(names[index]);
+  names[index] = std::move(trimmed);
+  if (save()) return true;
+  names[index] = std::move(previous);
+  return false;
 }
 
 const char* UserProfile::libraryRoot() { return PATHS[activeIndex].root; }
