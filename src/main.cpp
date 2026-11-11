@@ -647,7 +647,7 @@ void setup() {
   HalSystem::checkPanic();
 
   UserProfile::load();
-  library::setLibraryLocation(UserProfile::libraryRoot(), UserProfile::dataDir());
+  library::setLibraryLocation(UserProfile::libraryLocation());
   APP_STATE.loadFromFile();
   const bool isSleepWake = wakeupReason == HalGPIO::WakeupReason::PowerButton;
   const bool isPersistedSleepWake = isSleepWake && !APP_STATE.showBootScreen;

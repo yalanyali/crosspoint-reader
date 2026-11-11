@@ -13,7 +13,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <cstdio>
 #include <cstring>
 
 #include "LibraryIndexFile.h"
@@ -24,19 +23,8 @@ namespace {
 
 // Book caches stay shared; the index lives in the library's data directory.
 constexpr char CACHE_DIR[] = "/.crosspoint";
-const char* libraryRootPath = "/";
-const char* dataDir = "/.crosspoint";
-
-// Formatted once by setLibraryLocation() so no build step allocates a path.
-constexpr size_t INDEX_PATH_SIZE = 48;
-struct IndexFiles {
-  char index[INDEX_PATH_SIZE] = "/.crosspoint/library.idx";
-  char next[INDEX_PATH_SIZE] = "/.crosspoint/library.new";
-  char backup[INDEX_PATH_SIZE] = "/.crosspoint/library.bak";
-  char stage[INDEX_PATH_SIZE] = "/.crosspoint/library.stage";
-  char dirty[INDEX_PATH_SIZE] = "/.crosspoint/library.dirty";
-};
-IndexFiles indexFiles;
+constexpr LibraryLocation DEFAULT_LOCATION = LIBRARY_LOCATION("/", "/.crosspoint");
+const LibraryLocation* location = &DEFAULT_LOCATION;
 // Sticky fallback when the marker could not be persisted (card unavailable at
 // write time): callers must still see the index as stale until a rebuild clears it.
 bool dirtyInMemory = false;
@@ -103,13 +91,13 @@ void serviceBuilder(uint32_t& workUnits) {
 }
 
 bool recoverInterruptedInstall() {
-  if (!Storage.exists(indexFiles.backup)) return true;
-  if (!Storage.exists(indexFiles.index)) {
-    if (Storage.rename(indexFiles.backup, indexFiles.index)) {
+  if (!Storage.exists(location->backup)) return true;
+  if (!Storage.exists(location->index)) {
+    if (Storage.rename(location->backup, location->index)) {
       LOG_INF("LIBIDX", "restored previous index after interrupted install");
       return true;
     }
-    LOG_ERR("LIBIDX", "cannot restore %s; rebuild deferred", indexFiles.backup);
+    LOG_ERR("LIBIDX", "cannot restore %s; rebuild deferred", location->backup);
     return false;
   }
 
@@ -117,9 +105,9 @@ bool recoverInterruptedInstall() {
   // before backup cleanup. Validate them one at a time (SdFat has one reader)
   // before deciding which copy is stale.
   LibraryIndexFile candidate;
-  if (candidate.open(indexFiles.index)) {
+  if (candidate.open(location->index)) {
     candidate.close();
-    if (Storage.remove(indexFiles.backup)) return true;
+    if (Storage.remove(location->backup)) return true;
     LOG_ERR("LIBIDX", "cannot remove stale backup; rebuild deferred");
     return false;
   }
@@ -129,9 +117,9 @@ bool recoverInterruptedInstall() {
   }
   candidate.close();
 
-  if (candidate.open(indexFiles.backup)) {
+  if (candidate.open(location->backup)) {
     candidate.close();
-    if (!Storage.remove(indexFiles.index) || !Storage.rename(indexFiles.backup, indexFiles.index)) {
+    if (!Storage.remove(location->index) || !Storage.rename(location->backup, location->index)) {
       LOG_ERR("LIBIDX", "validated backup could not replace an invalid live index");
       return false;
     }
@@ -146,7 +134,7 @@ bool recoverInterruptedInstall() {
 
   // Neither file validates. The live path will be preserved until a complete
   // new index is ready; the unusable backup only blocks transactional install.
-  if (!Storage.remove(indexFiles.backup)) {
+  if (!Storage.remove(location->backup)) {
     LOG_ERR("LIBIDX", "invalid stale backup cannot be removed; rebuild deferred");
     return false;
   }
@@ -154,35 +142,35 @@ bool recoverInterruptedInstall() {
 }
 
 bool installNewIndex() {
-  const bool hadPrevious = Storage.exists(indexFiles.index);
+  const bool hadPrevious = Storage.exists(location->index);
 
   // A backup beside a live index is left by a successful install interrupted
   // before cleanup. It is stale now; remove it before reserving that name for
   // the current previous index.
-  if (Storage.exists(indexFiles.backup) && !Storage.remove(indexFiles.backup)) {
+  if (Storage.exists(location->backup) && !Storage.remove(location->backup)) {
     LOG_ERR("LIBIDX", "cannot remove stale backup; keeping the live index");
-    Storage.remove(indexFiles.next);
+    Storage.remove(location->next);
     return false;
   }
 
-  if (hadPrevious && !Storage.rename(indexFiles.index, indexFiles.backup)) {
+  if (hadPrevious && !Storage.rename(location->index, location->backup)) {
     LOG_ERR("LIBIDX", "cannot stage previous index for replacement");
-    Storage.remove(indexFiles.next);
+    Storage.remove(location->next);
     return false;
   }
 
-  if (!Storage.rename(indexFiles.next, indexFiles.index)) {
-    LOG_ERR("LIBIDX", "rename %s -> %s failed", indexFiles.next, indexFiles.index);
-    if (hadPrevious && !Storage.rename(indexFiles.backup, indexFiles.index)) {
+  if (!Storage.rename(location->next, location->index)) {
+    LOG_ERR("LIBIDX", "rename %s -> %s failed", location->next, location->index);
+    if (hadPrevious && !Storage.rename(location->backup, location->index)) {
       // recoverInterruptedInstall() retries this on the next rebuild. Do not
       // remove the backup: it is the only complete index left.
-      LOG_ERR("LIBIDX", "previous index rollback failed; backup retained at %s", indexFiles.backup);
+      LOG_ERR("LIBIDX", "previous index rollback failed; backup retained at %s", location->backup);
     }
-    Storage.remove(indexFiles.next);
+    Storage.remove(location->next);
     return false;
   }
 
-  if (hadPrevious && !Storage.remove(indexFiles.backup)) {
+  if (hadPrevious && !Storage.remove(location->backup)) {
     // The new live index is already complete. A stale backup is harmless and is
     // removed before the next replacement attempt.
     LOG_ERR("LIBIDX", "new index installed but stale backup cleanup failed");
@@ -192,7 +180,7 @@ bool installNewIndex() {
 
 void clearLibraryIndexDirty() {
   dirtyInMemory = false;
-  if (Storage.exists(indexFiles.dirty) && !Storage.remove(indexFiles.dirty)) {
+  if (Storage.exists(location->dirty) && !Storage.remove(location->dirty)) {
     LOG_ERR("LIBIDX", "cannot clear dirty marker");
   }
 }
@@ -635,8 +623,8 @@ bool emitIndex(const char* folderStagePath, WalkState& st, const uint16_t* order
 
   HalFile stage;
   HalFile out;
-  if (!Storage.openFileForRead("LIBIDX", indexFiles.stage, stage)) return false;
-  if (!Storage.openFileForWrite("LIBIDX", indexFiles.next, out)) {
+  if (!Storage.openFileForRead("LIBIDX", location->stage, stage)) return false;
+  if (!Storage.openFileForWrite("LIBIDX", location->next, out)) {
     stage.close();
     return false;
   }
@@ -711,7 +699,7 @@ bool emitIndex(const char* folderStagePath, WalkState& st, const uint16_t* order
     outBuffer.flush();
     stage.close();
     out.close();
-    Storage.remove(indexFiles.next);
+    Storage.remove(location->next);
     return false;
   }
 
@@ -975,7 +963,7 @@ bool emitIndex(const char* folderStagePath, WalkState& st, const uint16_t* order
     outBuffer.flush();
     stage.close();
     out.close();
-    Storage.remove(indexFiles.next);
+    Storage.remove(location->next);
     return false;
   }
 
@@ -992,7 +980,7 @@ bool emitIndex(const char* folderStagePath, WalkState& st, const uint16_t* order
     LOG_ERR("LIBIDX", "staging buffers alloc failed");
     outBuffer.flush();
     out.close();
-    Storage.remove(indexFiles.next);
+    Storage.remove(location->next);
     return false;
   }
   StagedEntry& entry = staged[0];
@@ -1081,7 +1069,7 @@ bool emitIndex(const char* folderStagePath, WalkState& st, const uint16_t* order
     // Leave the previous index alone. A shelf that is a rebuild out of date is
     // worth incomparably more than none at all, and a full card is exactly when
     // the reader can least afford to lose it.
-    if (closed) Storage.remove(indexFiles.next);
+    if (closed) Storage.remove(location->next);
     return false;
   }
 
@@ -1093,28 +1081,13 @@ bool emitIndex(const char* folderStagePath, WalkState& st, const uint16_t* order
 
 }  // namespace
 
-bool setLibraryLocation(const char* rootPath, const char* dataDirectory) {
-  IndexFiles files;
-  const auto format = [dataDirectory](char* out, const char* extension) {
-    const int n = snprintf(out, INDEX_PATH_SIZE, "%s/library.%s", dataDirectory, extension);
-    return n > 0 && static_cast<size_t>(n) < INDEX_PATH_SIZE;
-  };
-  if (!format(files.index, "idx") || !format(files.next, "new") || !format(files.backup, "bak") ||
-      !format(files.stage, "stage") || !format(files.dirty, "dirty")) {
-    LOG_ERR("LIBIDX", "data directory path too long: %s", dataDirectory);
-    return false;
-  }
-  indexFiles = files;
-  libraryRootPath = rootPath;
-  dataDir = dataDirectory;
-  return true;
-}
+void setLibraryLocation(const LibraryLocation* newLocation) { location = newLocation; }
 
-const char* libraryIndexPath() { return indexFiles.index; }
+const char* libraryIndexPath() { return location->index; }
 
 bool isLibraryBookFile(std::string_view path) {
   // Judge a book below a hidden library root by its path inside that root.
-  const std::string_view root = libraryRootPath;
+  const std::string_view root = location->root;
   if (root.size() > 1 && path.substr(0, root.size()) == root && path.size() > root.size() && path[root.size()] == '/') {
     path.remove_prefix(root.size());
   }
@@ -1134,14 +1107,14 @@ bool isLibraryBookFile(std::string_view path) {
 }
 
 bool markLibraryIndexDirty() {
-  if (Storage.exists(indexFiles.dirty)) return true;
-  if (!Storage.exists(dataDir) && !Storage.mkdir(dataDir)) {
+  if (Storage.exists(location->dirty)) return true;
+  if (!Storage.exists(location->dataDir) && !Storage.mkdir(location->dataDir)) {
     LOG_ERR("LIBIDX", "cannot create cache directory for dirty marker");
     dirtyInMemory = true;  // not persisted: stay dirty until the next rebuild
     return true;
   }
   HalFile marker;
-  if (!Storage.openFileForWrite("LIBIDX", indexFiles.dirty, marker)) {
+  if (!Storage.openFileForWrite("LIBIDX", location->dirty, marker)) {
     LOG_ERR("LIBIDX", "cannot create dirty marker");
     dirtyInMemory = true;
     return true;
@@ -1149,7 +1122,7 @@ bool markLibraryIndexDirty() {
   return true;
 }
 
-bool isLibraryIndexDirty() { return dirtyInMemory || Storage.exists(indexFiles.dirty); }
+bool isLibraryIndexDirty() { return dirtyInMemory || Storage.exists(location->dirty); }
 
 bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readMetadata) {
   const uint32_t startMs = millis();
@@ -1157,11 +1130,11 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
   stats = BuildStats{};
   if (rootPath[0] != '\0' && normalizeLibraryRootAliases(rootPath).empty()) rootPath = "/";
 
-  Storage.mkdir(dataDir);
+  Storage.mkdir(location->dataDir);
   if (!recoverInterruptedInstall()) return false;
-  Storage.remove(indexFiles.stage);
-  const std::string folderStagePath = std::string(indexFiles.stage) + ".f";
-  Storage.remove(folderStagePath.c_str());
+  Storage.remove(location->stage);
+  const char* folderStagePath = location->folderStage;
+  Storage.remove(folderStagePath);
 
   auto nameBuf = makeUniqueNoThrow<char[]>(NAME_BUF_SIZE);
   if (!nameBuf) {
@@ -1192,8 +1165,8 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
   uint16_t priorCount = 0;
   uint16_t nextFirstSeen = 0;
   LibraryIndexFile previous;
-  if (Storage.exists(indexFiles.index)) {
-    if (previous.openForReconciliation(indexFiles.index)) {
+  if (Storage.exists(location->index)) {
+    if (previous.openForReconciliation(location->index)) {
       nextFirstSeen = previous.header().nextFirstSeen;
       priorCount = previous.bookCount();
       priorList = makeUniqueNoThrow<PriorEntry[]>(priorCount == 0 ? 1 : priorCount);
@@ -1234,7 +1207,7 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
   st.previous = previous.isOpen() ? &previous : nullptr;
   st.stats = &stats;
 
-  if (!Storage.openFileForWrite("LIBIDX", indexFiles.stage, st.stage) ||
+  if (!Storage.openFileForWrite("LIBIDX", location->stage, st.stage) ||
       !Storage.openFileForWrite("LIBIDX", folderStagePath, st.folders)) {
     LOG_ERR("LIBIDX", "cannot open staging files");
     if (st.stage) st.stage.close();
@@ -1258,8 +1231,8 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
 
   if (st.failed || !stageFlushed || !stageClosed || !foldersClosed) {
     LOG_ERR("LIBIDX", "staging failed; keeping the previous index");
-    Storage.remove(indexFiles.stage);
-    Storage.remove(folderStagePath.c_str());
+    Storage.remove(location->stage);
+    Storage.remove(folderStagePath);
     return false;
   }
 
@@ -1274,8 +1247,8 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
   if (previous.isOpen() && st.books == priorCount && st.reused == priorCount && stats.metadataReused == priorCount &&
       st.unreadableSkipped == 0) {
     previous.close();
-    Storage.remove(indexFiles.stage);
-    Storage.remove(folderStagePath.c_str());
+    Storage.remove(location->stage);
+    Storage.remove(folderStagePath);
     stats.walkMs = millis() - startMs;
     LOG_INF("LIBIDX", "unchanged: %u reused, %u parsed, no replacement, %ums",
             static_cast<unsigned>(stats.metadataReused), static_cast<unsigned>(stats.parsed),
@@ -1302,8 +1275,8 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
   auto resolvedFirstSeen = makeUniqueNoThrow<uint16_t[]>(st.books == 0 ? 1 : st.books);
   if (!resolvedFirstSeen) {
     LOG_ERR("LIBIDX", "firstSeen array alloc failed");
-    Storage.remove(indexFiles.stage);
-    Storage.remove(folderStagePath.c_str());
+    Storage.remove(location->stage);
+    Storage.remove(folderStagePath);
     return false;
   }
   if (st.books > 0) {
@@ -1313,10 +1286,10 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
     // "Recently added" today, and read back as prior truth by the next rebuild,
     // which would then propagate the zeros forever. The previous index survives.
     HalFile read;
-    if (!Storage.openFileForRead("LIBIDX", indexFiles.stage, read)) {
+    if (!Storage.openFileForRead("LIBIDX", location->stage, read)) {
       LOG_ERR("LIBIDX", "firstSeen reconciliation: cannot reopen the stage");
-      Storage.remove(indexFiles.stage);
-      Storage.remove(folderStagePath.c_str());
+      Storage.remove(location->stage);
+      Storage.remove(folderStagePath);
       return false;
     }
     for (uint16_t i = 0; i < st.books; i++) {
@@ -1326,8 +1299,8 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
           read.read(reinterpret_cast<uint8_t*>(&r), sizeof(r)) != static_cast<int>(sizeof(r))) {
         LOG_ERR("LIBIDX", "firstSeen reconciliation: short read at record %u", static_cast<unsigned>(i));
         read.close();
-        Storage.remove(indexFiles.stage);
-        Storage.remove(folderStagePath.c_str());
+        Storage.remove(location->stage);
+        Storage.remove(folderStagePath);
         return false;
       }
       if (r.firstSeen != FIRST_SEEN_UNRESOLVED) {
@@ -1358,8 +1331,8 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
     }
     if (!read.close()) {
       LOG_ERR("LIBIDX", "firstSeen reconciliation: stage close failed");
-      Storage.remove(indexFiles.stage);
-      Storage.remove(folderStagePath.c_str());
+      Storage.remove(location->stage);
+      Storage.remove(folderStagePath);
       return false;
     }
     for (uint16_t q = 0; q < priorCount; q++) {
@@ -1388,8 +1361,8 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
   auto order = makeUniqueNoThrow<uint16_t[]>(st.books == 0 ? 1 : st.books);
   if (!order) {
     LOG_ERR("LIBIDX", "order array alloc failed (%u books)", static_cast<unsigned>(st.books));
-    Storage.remove(indexFiles.stage);
-    Storage.remove(folderStagePath.c_str());
+    Storage.remove(location->stage);
+    Storage.remove(folderStagePath);
     return false;
   }
   for (uint16_t i = 0; i < st.books; i++) {
@@ -1405,10 +1378,10 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
     auto keys = makeUniqueNoThrow<SortKey[]>(st.books);
     if (keys) {
       HalFile stage;
-      if (!Storage.openFileForRead("LIBIDX", indexFiles.stage, stage)) {
+      if (!Storage.openFileForRead("LIBIDX", location->stage, stage)) {
         LOG_ERR("LIBIDX", "title sort: cannot reopen the record stage");
-        Storage.remove(indexFiles.stage);
-        Storage.remove(folderStagePath.c_str());
+        Storage.remove(location->stage);
+        Storage.remove(folderStagePath);
         return false;
       }
       for (uint16_t i = 0; i < st.books; i++) {
@@ -1419,8 +1392,8 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
             stage.read(reinterpret_cast<uint8_t*>(&r), sizeof(r)) != static_cast<int>(sizeof(r))) {
           LOG_ERR("LIBIDX", "title sort: record stage read failed at %u", static_cast<unsigned>(offset));
           stage.close();
-          Storage.remove(indexFiles.stage);
-          Storage.remove(folderStagePath.c_str());
+          Storage.remove(location->stage);
+          Storage.remove(folderStagePath);
           return false;
         }
         memset(keys[i].key, 0, sizeof(keys[i].key));
@@ -1429,8 +1402,8 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
       }
       if (!stage.close()) {
         LOG_ERR("LIBIDX", "title sort: stage close failed");
-        Storage.remove(indexFiles.stage);
-        Storage.remove(folderStagePath.c_str());
+        Storage.remove(location->stage);
+        Storage.remove(folderStagePath);
         return false;
       }
       delay(1);
@@ -1449,11 +1422,10 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
   LOG_DBG("LIBIDX", "phase title order: %ums", static_cast<unsigned>(millis() - titleStartMs));
 
   [[maybe_unused]] const uint32_t emitStartMs = millis();
-  const bool ok =
-      emitIndex(folderStagePath.c_str(), st, order.get(), resolvedFirstSeen.get(), coreSortsAvailable, stats);
+  const bool ok = emitIndex(folderStagePath, st, order.get(), resolvedFirstSeen.get(), coreSortsAvailable, stats);
   LOG_DBG("LIBIDX", "phase author/orders/emit: %ums", static_cast<unsigned>(millis() - emitStartMs));
-  Storage.remove(indexFiles.stage);
-  Storage.remove(folderStagePath.c_str());
+  Storage.remove(location->stage);
+  Storage.remove(folderStagePath);
 
   stats.walkMs = millis() - startMs;
   stats.indexReplaced = ok;

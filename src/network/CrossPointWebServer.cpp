@@ -182,6 +182,7 @@ String normalizeWebPath(const String& inputPath) {
   if (result.length() > 1 && result.endsWith("/")) {
     result = result.substring(0, result.length() - 1);
   }
+  if (!UserProfile::mapsPaths()) return result;
   return UserProfile::toStoragePath(result.c_str()).c_str();
 }
 

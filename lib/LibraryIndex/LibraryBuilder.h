@@ -68,11 +68,32 @@ struct BuildStats {
 // without building the reader's spine, TOC, CSS, or section caches.
 bool buildLibraryIndex(const char* rootPath, BuildStats& stats, bool readMetadata = false);
 
-// Where the library lives: the folder walked for books and the directory
-// that holds the index. Both strings must outlive every library call.
-// Defaults to the whole card with the index in /.crosspoint. False, with the
-// location unchanged, when the index paths would not fit.
-bool setLibraryLocation(const char* rootPath, const char* dataDirectory);
+// Where the library lives: the folder walked for books and the files of its
+// index. Build one with LIBRARY_LOCATION; its arguments must be string literals.
+struct LibraryLocation {
+  const char* root;
+  const char* dataDir;
+  const char* index;
+  const char* next;
+  const char* backup;
+  const char* stage;
+  const char* folderStage;
+  const char* dirty;
+};
+
+#define LIBRARY_LOCATION(root, dir)                  \
+  ::library::LibraryLocation{root,                   \
+                             dir,                    \
+                             dir "/library.idx",     \
+                             dir "/library.new",     \
+                             dir "/library.bak",     \
+                             dir "/library.stage",   \
+                             dir "/library.stage.f", \
+                             dir "/library.dirty"}
+
+// Keeps the pointer, so `location` must outlive every library call. Defaults
+// to the whole card with the index in /.crosspoint.
+void setLibraryLocation(const LibraryLocation* location);
 
 // Live index path, shared by the builder and activity.
 const char* libraryIndexPath();

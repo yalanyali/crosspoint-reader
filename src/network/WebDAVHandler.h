@@ -34,7 +34,7 @@ class WebDAVHandler : public RequestHandler {
   // Utilities
   String getRequestPath(WebServer& s) const;
   String getDestinationPath(WebServer& s) const;
-  void urlEncodePath(const String& path, String& out) const;
+  void urlEncodePath(const char* path, String& out) const;
   bool isProtectedPath(const String& path) const;
   int getDepth(WebServer& s) const;
   bool getOverwrite(WebServer& s) const;

@@ -4,6 +4,10 @@
 #include <cstdint>
 #include <string>
 
+namespace library {
+struct LibraryLocation;
+}
+
 // Each profile has its own library root and its own settings, state and recent
 // books. The first profile uses the card root and /.crosspoint, so cards from
 // earlier firmware keep their data. Other profiles live under /.profiles, which
@@ -32,12 +36,14 @@ class UserProfile {
 
   // "/" for profile 0, otherwise the profile's folder ("/.profiles/2").
   static const char* libraryRoot();
-  // Holds the profile's library index.
-  static const char* dataDir();
+  // The profile's library root and index files.
+  static const library::LibraryLocation* libraryLocation();
   static const char* settingsPath();
   static const char* statePath();
   static const char* recentBooksPath();
 
+  // False when library paths are card paths, so callers can skip mapping.
+  static bool mapsPaths();
   // Maps a path inside the library ("/" is the library root) to a card path.
   static std::string toStoragePath(const char* libraryPath);
   // Inverse of toStoragePath; points into `storagePath`. Paths outside the

@@ -2,6 +2,7 @@
 
 #include <HalStorage.h>
 #include <I18n.h>
+#include <LibraryBuilder.h>
 #include <Logging.h>
 #include <PersistableStore.h>
 
@@ -14,16 +15,16 @@ namespace {
 constexpr char PROFILES_FILE[] = "/.crosspoint/profiles.json";
 
 struct ProfilePaths {
-  const char* root;
-  const char* dataDir;
+  library::LibraryLocation library;
   const char* settings;
   const char* state;
   const char* recent;
 };
 
 constexpr ProfilePaths PATHS[UserProfile::COUNT] = {
-    {"/", "/.crosspoint", "/.crosspoint/settings.json", "/.crosspoint/state.json", "/.crosspoint/recent.json"},
-    {"/.profiles/2", "/.profiles/2/.crosspoint", "/.profiles/2/.crosspoint/settings.json",
+    {LIBRARY_LOCATION("/", "/.crosspoint"), "/.crosspoint/settings.json", "/.crosspoint/state.json",
+     "/.crosspoint/recent.json"},
+    {LIBRARY_LOCATION("/.profiles/2", "/.profiles/2/.crosspoint"), "/.profiles/2/.crosspoint/settings.json",
      "/.profiles/2/.crosspoint/state.json", "/.profiles/2/.crosspoint/recent.json"},
 };
 
@@ -58,8 +59,8 @@ void UserProfile::load() {
     }
   }
   savedIndex = activeIndex;
-  if (activeIndex != 0 && !Storage.ensureDirectoryExists(PATHS[activeIndex].dataDir)) {
-    LOG_ERR("PROFILE", "Cannot create %s, using profile 1", PATHS[activeIndex].dataDir);
+  if (activeIndex != 0 && !Storage.ensureDirectoryExists(PATHS[activeIndex].library.dataDir)) {
+    LOG_ERR("PROFILE", "Cannot create %s, using profile 1", PATHS[activeIndex].library.dataDir);
     activeIndex = 0;
   }
   LOG_INF("PROFILE", "Active profile %u (%s)", static_cast<unsigned>(activeIndex) + 1, libraryRoot());
@@ -94,16 +95,18 @@ bool UserProfile::setName(const uint8_t index, const std::string& name) {
   return false;
 }
 
-const char* UserProfile::libraryRoot() { return PATHS[activeIndex].root; }
-const char* UserProfile::dataDir() { return PATHS[activeIndex].dataDir; }
+const char* UserProfile::libraryRoot() { return PATHS[activeIndex].library.root; }
+const library::LibraryLocation* UserProfile::libraryLocation() { return &PATHS[activeIndex].library; }
 const char* UserProfile::settingsPath() { return PATHS[activeIndex].settings; }
 const char* UserProfile::statePath() { return PATHS[activeIndex].state; }
 const char* UserProfile::recentBooksPath() { return PATHS[activeIndex].recent; }
 
+bool UserProfile::mapsPaths() { return activeIndex != 0; }
+
 std::string UserProfile::toStoragePath(const char* libraryPath) {
   if (libraryPath[0] == '\0') libraryPath = "/";
-  if (activeIndex == 0) return libraryPath;
-  std::string path = PATHS[activeIndex].root;
+  if (!mapsPaths()) return libraryPath;
+  std::string path = PATHS[activeIndex].library.root;
   if (strcmp(libraryPath, "/") != 0) {
     if (libraryPath[0] != '/') path += '/';
     path += libraryPath;
@@ -112,8 +115,8 @@ std::string UserProfile::toStoragePath(const char* libraryPath) {
 }
 
 const char* UserProfile::toLibraryPath(const char* storagePath) {
-  if (activeIndex == 0) return storagePath;
-  const char* root = PATHS[activeIndex].root;
+  if (!mapsPaths()) return storagePath;
+  const char* root = PATHS[activeIndex].library.root;
   const size_t rootLen = strlen(root);
   if (strncmp(storagePath, root, rootLen) != 0) return storagePath;
   if (storagePath[rootLen] == '\0') return "/";
