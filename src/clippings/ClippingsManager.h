@@ -7,5 +7,6 @@ class ClippingsManager {
   static bool saveClipping(const std::string& bookTitle, const std::string& author, const std::string& chapterTitle,
                            int pageNumber, const std::string& selectedText);
 
+  // Relative to the active profile's library root.
   static constexpr const char* CLIPPINGS_PATH = "/My Clippings.txt";
 };

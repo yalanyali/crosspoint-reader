@@ -326,7 +326,7 @@ void ActivityManager::goToPlugins(bool showOpds) {
 
 void ActivityManager::goToReader(std::string path, const bool allowFastInitialRefresh) {
   if (path.empty()) {
-    goToFileBrowser("/");
+    goToFileBrowser();
     return;
   }
 

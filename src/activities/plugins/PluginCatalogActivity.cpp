@@ -26,6 +26,7 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "UserProfile.h"
 #include "activities/reader/DictionaryDefinitionActivity.h"  // plain-text README viewer
 #include "activities/settings/PluginHubInstallActivity.h"
 #include "activities/util/ConfirmationActivity.h"
@@ -1392,14 +1393,6 @@ HttpDownloader::DownloadError PluginCatalogActivity::downloadBook(const Item& it
     return HttpDownloader::FILE_ERROR;
   }
 
-  const std::string folderDir = downloadDir();
-  const char* folder = folderDir.c_str();
-  bool haveFolder = folder[0] != '\0';
-  if (haveFolder && !Storage.exists(folder) && !Storage.mkdir(folder)) {
-    LOG_ERR("PCAT", "mkdir failed for %s, using SD root", folder);
-    haveFolder = false;
-  }
-
   // Sanitize after substitution so the byte limit applies to the complete
   // filename and does not remove an extension already present in {title}.
   const std::string filename =
@@ -1408,9 +1401,24 @@ HttpDownloader::DownloadError PluginCatalogActivity::downloadBook(const Item& it
     LOG_ERR("PCAT", "unsafe filename rejected: %s", filename.c_str());
     return HttpDownloader::FILE_ERROR;
   }
+
+  // Books go to the active profile's library; other files (e.g. sleep images)
+  // stay where the manifest puts them on the card.
+  std::string folderDir = downloadDir();
+  const bool isBook = library::isLibraryBookFile(folderDir + "/" + filename);
+  if (isBook) folderDir = UserProfile::toStoragePath(folderDir.c_str());
+  const char* folder = folderDir.c_str();
+  bool haveFolder = folder[0] != '\0' && strcmp(folder, "/") != 0;
+  if (haveFolder && !Storage.exists(folder) && !Storage.mkdir(folder)) {
+    LOG_ERR("PCAT", "mkdir failed for %s, using the library root", folder);
+    haveFolder = false;
+  }
   std::string dest;
-  dest.reserve((haveFolder ? folderDir.size() : 0) + 1 + filename.size());
-  if (haveFolder) dest += folder;
+  if (haveFolder) {
+    dest = folderDir;
+  } else if (isBook && !UserProfile::isLibraryRoot("/")) {
+    dest = UserProfile::libraryRoot();
+  }
   dest += '/';
   dest += filename;
   if (!protectedpaths::isPluginPath(dest)) {

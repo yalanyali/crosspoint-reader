@@ -7,6 +7,7 @@
 
 #include <cstdint>
 
+#include "UserProfile.h"
 #include "util/HomeButtonInput.h"
 
 class CrossPointSettings : public PersistableStore<CrossPointSettings> {
@@ -488,7 +489,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Unlocked for the same reason as statusBarSpec(); see the note above.
   ReaderRenderSpec readerRenderSpec(uint16_t viewportWidth, uint16_t viewportHeight) const;
 
-  static const char* getFilePath() { return "/.crosspoint/settings.json"; }
+  static const char* getFilePath() { return UserProfile::settingsPath(); }
   void toJson(JsonDocument& doc) const;
   bool fromJson(JsonVariantConst doc);
 

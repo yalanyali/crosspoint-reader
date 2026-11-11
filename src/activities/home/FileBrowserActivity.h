@@ -20,6 +20,9 @@ class FileBrowserActivity final : public UiListActivity {
   void renameSelectedFile(const std::string& oldPath, const std::string& oldEntry, const std::string& newStem,
                           const std::string& extension);
   void deleteSelected();
+  // Book browsing stops at the active profile's library root.
+  const char* rootPath() const;
+  bool atRoot() const;
 
   Mode mode = Mode::Books;
 

@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <string>
 
+#include "UserProfile.h"
+
 class CrossPointState : public PersistableStore<CrossPointState> {
   CrossPointState() = default;
 
@@ -22,7 +24,7 @@ class CrossPointState : public PersistableStore<CrossPointState> {
   bool lastSleepFromReader = false;
   bool showBootScreen = true;
 
-  static const char* getFilePath() { return "/.crosspoint/state.json"; }
+  static const char* getFilePath() { return UserProfile::statePath(); }
   void toJson(JsonDocument& doc) const;
   bool fromJson(JsonVariantConst doc);
 

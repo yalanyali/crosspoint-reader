@@ -58,7 +58,7 @@ struct BuildStats {
   bool dedupDegraded = false;
 };
 
-// Walk `rootPath`, write `/.crosspoint/library.idx`, and report what happened.
+// Walk `rootPath`, write the index in the data directory, and report what happened.
 // The previous index, including its monotonic "recently added" counter, is read
 // internally so callers cannot accidentally split one rebuild state across two
 // file opens.
@@ -67,6 +67,33 @@ struct BuildStats {
 // it stops the normal EPUB parser at the end of <metadata>, before the manifest,
 // without building the reader's spine, TOC, CSS, or section caches.
 bool buildLibraryIndex(const char* rootPath, BuildStats& stats, bool readMetadata = false);
+
+// Where the library lives: the folder walked for books and the files of its
+// index. Build one with LIBRARY_LOCATION; its arguments must be string literals.
+struct LibraryLocation {
+  const char* root;
+  const char* dataDir;
+  const char* index;
+  const char* next;
+  const char* backup;
+  const char* stage;
+  const char* folderStage;
+  const char* dirty;
+};
+
+#define LIBRARY_LOCATION(root, dir)                  \
+  ::library::LibraryLocation{root,                   \
+                             dir,                    \
+                             dir "/library.idx",     \
+                             dir "/library.new",     \
+                             dir "/library.bak",     \
+                             dir "/library.stage",   \
+                             dir "/library.stage.f", \
+                             dir "/library.dirty"}
+
+// Keeps the pointer, so `location` must outlive every library call. Defaults
+// to the whole card with the index in /.crosspoint.
+void setLibraryLocation(const LibraryLocation* location);
 
 // Live index path, shared by the builder and activity.
 const char* libraryIndexPath();

@@ -51,6 +51,7 @@
 #include "SdCardFont.h"
 #include "SdCardFontSystem.h"
 #include "SilentRestart.h"
+#include "UserProfile.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "clippings/ClippingText.h"
@@ -108,11 +109,13 @@ int clampPercent(int percent) {
   return percent;
 }
 
+// Relative to the active profile's library root.
 constexpr char READ_FOLDER[] = "/read";
 
 bool isInReadFolder(const std::string& path) {
+  const std::string_view libraryPath = UserProfile::toLibraryPath(path.c_str());
   constexpr size_t n = sizeof(READ_FOLDER) - 1;
-  return path.size() > n && path.compare(0, n, READ_FOLDER) == 0 && path[n] == '/';
+  return libraryPath.size() > n && libraryPath.compare(0, n, READ_FOLDER) == 0 && libraryPath[n] == '/';
 }
 
 struct ProgressRange {
@@ -149,8 +152,9 @@ std::string buildReadFolderDestination(const std::string& srcPath) {
   const size_t lastSlash = srcPath.rfind('/');
   const std::string filename = (lastSlash != std::string::npos) ? srcPath.substr(lastSlash + 1) : srcPath;
 
-  Storage.mkdir(READ_FOLDER);
-  std::string dstPath = std::string(READ_FOLDER) + "/" + filename;
+  const std::string readFolder = UserProfile::toStoragePath(READ_FOLDER);
+  Storage.mkdir(readFolder.c_str());
+  std::string dstPath = readFolder + "/" + filename;
   if (!Storage.exists(dstPath.c_str())) {
     return dstPath;
   }
@@ -160,7 +164,7 @@ std::string buildReadFolderDestination(const std::string& srcPath) {
   const std::string ext = (dotPos != std::string::npos) ? filename.substr(dotPos) : "";
   int suffix = 2;
   do {
-    dstPath = std::string(READ_FOLDER) + "/" + base + " (" + std::to_string(suffix) + ")" + ext;
+    dstPath = readFolder + "/" + base + " (" + std::to_string(suffix) + ")" + ext;
     suffix++;
   } while (Storage.exists(dstPath.c_str()) && suffix < 100);
   return dstPath;

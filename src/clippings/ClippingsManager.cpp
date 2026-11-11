@@ -10,6 +10,8 @@
 #include <cstdio>
 #include <ctime>
 
+#include "UserProfile.h"
+
 namespace {
 constexpr const char* WEEKDAY_NAMES[] = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"};
 constexpr const char* MONTH_NAMES[] = {"January", "February", "March",     "April",   "May",      "June",
@@ -34,9 +36,10 @@ bool formatKindleAddedOn(char* buf, const size_t bufSize) {
 bool ClippingsManager::saveClipping(const std::string& bookTitle, const std::string& author,
                                     const std::string& chapterTitle, const int pageNumber,
                                     const std::string& selectedText) {
-  HalFile file = Storage.open(CLIPPINGS_PATH, O_RDWR | O_CREAT | O_AT_END);
+  const std::string clippingsPath = UserProfile::toStoragePath(CLIPPINGS_PATH);
+  HalFile file = Storage.open(clippingsPath.c_str(), O_RDWR | O_CREAT | O_AT_END);
   if (!file) {
-    LOG_ERR("CLIP", "Failed to open %s for append", CLIPPINGS_PATH);
+    LOG_ERR("CLIP", "Failed to open %s for append", clippingsPath.c_str());
     return false;
   }
   const size_t originalSize = file.fileSize();
@@ -73,8 +76,8 @@ bool ClippingsManager::saveClipping(const std::string& bookTitle, const std::str
   file.flush();
 
   if (!ok) {
-    if (!rolledBack) LOG_ERR("CLIP", "Failed to roll back partial write to %s", CLIPPINGS_PATH);
-    LOG_ERR("CLIP", "Failed to write clipping to %s", CLIPPINGS_PATH);
+    if (!rolledBack) LOG_ERR("CLIP", "Failed to roll back partial write to %s", clippingsPath.c_str());
+    LOG_ERR("CLIP", "Failed to write clipping to %s", clippingsPath.c_str());
     return false;
   }
 
