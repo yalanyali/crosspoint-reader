@@ -15,6 +15,9 @@ The web server is available while the device is in **File Transfer** or
 - Upload and delete SD-card font families
 - Accept WebDAV clients and Calibre wireless uploads
 
+The file manager, WebDAV and Calibre uploads use the current profile's library
+(see **Profile** in the [User Guide](../USER_GUIDE.md#profiles)).
+
 The server does not require authentication. Use it only on trusted private
 networks or in hotspot mode when you control who is connected.
 

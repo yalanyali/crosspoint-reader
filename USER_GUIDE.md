@@ -117,7 +117,7 @@ See [Reading Mode](#4-reading-mode) below for more information.
 
 ### 3.3 Browse Files Screen
 
-The Browse Files screen acts as a file and folder browser. The full path to the current directory is shown at the top of the screen. File extensions are displayed alongside each filename, and directories are shown with brackets (e.g. `[folder-name]`). Hidden directories (those beginning with `.`) are also visible.
+The Browse Files screen acts as a file and folder browser. The full path to the current directory is shown at the top of the screen. File extensions are displayed alongside each filename, and directories are shown with brackets (e.g. `[folder-name]`). Hidden directories (those beginning with `.`) are visible when **Show Hidden Files** is on. In the second [profile](#profiles), the browser starts at that profile's own folder and shows paths relative to it.
 
 * **Navigate List:** Use **Left** (or **Side Up**), or **Right** (or **Side Down**) to move the selection cursor up and down through folders and books. You can also long-press these buttons to scroll a full page up or down.
 * **Open Selection:** Press **Confirm** to open a folder or start reading a selected book. Selecting a `.bmp` file will open the image viewer.
@@ -126,7 +126,7 @@ The Browse Files screen acts as a file and folder browser. The full path to the 
 
 ### 3.4 Library Screen
 
-The Library indexes up to 4,096 supported books on the SD card and shows their titles and authors without requiring you to remember their folders. Its four tabs provide different views. An arrow beside an indexed tab shows the sort direction:
+The Library indexes up to 4,096 supported books in the current [profile](#profiles) and shows their titles and authors without requiring you to remember their folders. Its four tabs provide different views. An arrow beside an indexed tab shows the sort direction:
 
 - **Recent** lists the ten books you opened most recently. Hold a book to remove it from this list.
 - **Added** keeps books in the order in which the Library first discovered them. Down shows newest additions first; up shows oldest first.
@@ -152,6 +152,8 @@ The File Transfer screen allows you to upload and manage files on the device. Wh
 See the [web server docs](./docs/webserver.md) for more information on how to connect to the web server and upload files.
 
 The web interface also supports **WebDAV**, allowing you to mount the device as a network drive and manage files directly from your computer's file manager.
+
+The web file manager and WebDAV show only the current [profile](#profiles)'s files. Books you upload go to that profile.
 
 Download links for files already on the device are available in the web interface, so you can retrieve books or screenshots over Wi-Fi without connecting a cable.
 
@@ -364,6 +366,13 @@ Settings are grouped into **System**, **Display**, **Reader**, **Controls**, **L
   - Plugin Hub is optional. Users who prefer manual installation can download it directly from [crosspoint-plugin-hub releases](https://github.com/crosspoint-reader/crosspoint-plugin-hub/releases) and copy/extract the `pluginhub` folder so it ends up at `/.crosspoint/plugins/pluginhub/`, `/plugins/pluginhub/`, or `/.plugins/pluginhub/`. Once installed, Plugin Hub appears as a normal entry under **Home → Plugins**.
 
 - **Language**: Set the UI language. CrossPoint supports 32 languages: English, Spanish, French, German, Czech, Brazilian Portuguese, European Portuguese, Russian, Swedish, Romanian, Catalan, Ukrainian, Belarusian, Italian, Polish, Finnish, Danish, Dutch, Turkish, Kazakh, Hungarian, Lithuanian, Slovenian, Valencian, Hebrew, Arabic, Slovak, Bosnian, Vietnamese, Norwegian Bokmål, Indonesian, and Orangutan.
+
+- <a id="profiles"></a>**Profile**: Switch between **Profile 1** and **Profile 2**, for example when two people share one device. The device restarts into the selected profile.
+  - Each profile has its own books, settings, reading position, recent books, Library index, clippings export, screenshots, and folder for finished books. Books one profile adds through Browse Files, the web file manager, WebDAV, Calibre, or OPDS are not shown to the other profile.
+  - Shared by both profiles: Wi-Fi networks, OPDS servers, CrossPoint Sync account, fonts, dictionaries, sleep images, plugins, and the reading cache (**Clear Reading Cache** clears it for both).
+  - Profile 1 uses the SD card root, as before. Profile 2 keeps its books and settings in the hidden `/.profiles/2` folder, and the selected profile is stored in `/.crosspoint/profile`.
+  - Profiles keep libraries apart; they are not a lock. There is no PIN, and anyone with the SD card on a computer (or in **USB Drive** mode) can see both folders.
+  - To add fonts while Profile 2 is active, use the **Fonts** page of the web interface. The file manager would put a `fonts` folder inside the profile, where the device does not look for fonts.
 
 - **Manage Fonts**: Browse, download, and manage custom font families installed from the SD card. See [Custom Fonts (SD Card)](#38-custom-fonts-sd-card) for more information.
 
@@ -747,7 +756,7 @@ Select **View Clippings** to browse saved excerpts for the current book. Press *
 
 Each book can store up to **1,024 clippings on ESP32-S3 devices** or **256 on ESP32-C3 devices**. These limits also apply to clippings downloaded through sync.
 
-The structured clipping store under `.crosspoint/clippings` keeps up to **4 KiB of UTF-8 text per clipping**. Longer selections must be shortened before saving. CrossPoint also appends up to **2,000 UTF-8 bytes** of each saved excerpt to `My Clippings.txt` in the root of the SD card, using Kindle-compatible formatting. If that export fails, the clipping remains saved and the message reports the export failure.
+The structured clipping store under `.crosspoint/clippings` keeps up to **4 KiB of UTF-8 text per clipping**. Longer selections must be shortened before saving. CrossPoint also appends up to **2,000 UTF-8 bytes** of each saved excerpt to `My Clippings.txt` in the root of the current profile's library, using Kindle-compatible formatting. If that export fails, the clipping remains saved and the message reports the export failure.
 
 Local book and folder moves carry clipping data with them. Deleting a local book removes its local clipping data; it does not delete already synced server copies or historical entries in `My Clippings.txt`. Deleting an individual clipping likewise leaves the text export untouched, but queues its server deletion for the next enabled manual sync. `My Clippings.txt` is an independent append-only export, not the source used to restore or sync highlights.
 
@@ -809,4 +818,4 @@ Press **Ctrl-C** or close the graph window to exit.
 
 If the device is stuck in a bootloop, press and release the Reset button. Then, press and hold on to the configured Back button and the Power Button to boot to the Home Screen.
 
-There can be issues with broken cache or config. In this case, delete the `.crosspoint` directory on your SD card (or consider deleting only `settings.json`, `state.json`, or `epub_*` cache directories in the `.crosspoint/` folder).
+There can be issues with broken cache or config. In this case, delete the `.crosspoint` directory on your SD card (or consider deleting only `settings.json`, `state.json`, or `epub_*` cache directories in the `.crosspoint/` folder). Profile 2 keeps its own `settings.json` and `state.json` in `/.profiles/2/.crosspoint/`. Deleting `/.crosspoint` also returns the device to Profile 1.

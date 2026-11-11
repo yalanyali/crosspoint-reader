@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "UserProfile.h"
+
 struct RecentBook {
   std::string path;
   std::string title;
@@ -27,7 +29,7 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
   friend class PersistableStore<RecentBooksStore>;
 
  public:
-  static const char* getFilePath() { return "/.crosspoint/recent.json"; }
+  static const char* getFilePath() { return UserProfile::recentBooksPath(); }
   void toJson(JsonDocument& doc) const;
   bool fromJson(JsonVariantConst doc);
 

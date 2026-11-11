@@ -655,7 +655,8 @@ if (parsedSize != fileSize) {
 
 Written by `lib/LibraryIndex/LibraryBuilder.cpp`, read by `LibraryIndexFile`. One
 file describing every book on the card, so the shelf can sort and search
-thousands of titles without opening any of them.
+thousands of titles without opening any of them. Profile 2 has its own index at
+`/.profiles/2/.crosspoint/library.idx` that covers only its folder.
 
 Format version 2. An index written by another version fails validation on open
 and is rebuilt; that is the entire migration mechanism.

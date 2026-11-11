@@ -7,6 +7,7 @@
 
 #include "ClippingStore.h"
 #include "ProtectedPaths.h"
+#include "UserProfile.h"
 #include "util/BookCacheUtils.h"
 #include "util/TaskWatchdog.h"
 
@@ -183,14 +184,14 @@ void WebDAVHandler::handlePropfind(WebServer& s) {
   }
 
   // Check if path exists
-  if (!Storage.exists(path.c_str()) && path != "/") {
+  if (!Storage.exists(path.c_str()) && !UserProfile::isLibraryRoot(path.c_str())) {
     s.send(404, "text/plain", "Not Found");
     return;
   }
 
   HalFile root = Storage.open(path.c_str());
   if (!root) {
-    if (path == "/") {
+    if (UserProfile::isLibraryRoot(path.c_str())) {
       // Root should always work — send minimal response
       s.setContentLength(CONTENT_LENGTH_UNKNOWN);
       s.send(207, "application/xml; charset=\"utf-8\"", "");
@@ -271,7 +272,7 @@ void WebDAVHandler::handlePropfind(WebServer& s) {
 void WebDAVHandler::sendPropEntry(WebServer& s, const String& path, bool isDir, size_t size,
                                   const String& lastModified) const {
   String href;
-  urlEncodePath(path, href);
+  urlEncodePath(UserProfile::toLibraryPath(path.c_str()), href);
   // Ensure directory hrefs end with /
   if (isDir && !href.endsWith("/")) href += "/";
 
@@ -419,7 +420,7 @@ void WebDAVHandler::handleDelete(WebServer& s) {
   String path = getRequestPath(s);
   LOG_DBG("DAV", "DELETE %s", path.c_str());
 
-  if (path == "/" || path.isEmpty()) {
+  if (UserProfile::isLibraryRoot(path.c_str()) || path.isEmpty()) {
     s.send(403, "text/plain", "Cannot delete root");
     return;
   }
@@ -514,7 +515,7 @@ void WebDAVHandler::handleMove(WebServer& s) {
 
   LOG_DBG("DAV", "MOVE %s -> %s (overwrite=%d)", srcPath.c_str(), dstPath.c_str(), overwrite);
 
-  if (srcPath == "/" || srcPath.isEmpty()) {
+  if (UserProfile::isLibraryRoot(srcPath.c_str()) || srcPath.isEmpty()) {
     s.send(403, "text/plain", "Cannot move root");
     return;
   }
@@ -712,7 +713,7 @@ String WebDAVHandler::getRequestPath(WebServer& s) const {
   std::string normalized = FsHelpers::normalisePath(decoded.c_str());
   String result = normalized.c_str();
 
-  if (result.isEmpty()) return "/";
+  if (result.isEmpty()) return UserProfile::libraryRoot();
   if (!result.startsWith("/")) result = "/" + result;
 
   // Remove trailing slash unless root
@@ -720,7 +721,7 @@ String WebDAVHandler::getRequestPath(WebServer& s) const {
     result = result.substring(0, result.length() - 1);
   }
 
-  return result;
+  return UserProfile::toStoragePath(result.c_str()).c_str();
 }
 
 String WebDAVHandler::getDestinationPath(WebServer& s) const {
@@ -743,7 +744,7 @@ String WebDAVHandler::getDestinationPath(WebServer& s) const {
   std::string normalized = FsHelpers::normalisePath(decoded.c_str());
   String result = normalized.c_str();
 
-  if (result.isEmpty()) return "/";
+  if (result.isEmpty()) return UserProfile::libraryRoot();
   if (!result.startsWith("/")) result = "/" + result;
 
   // Remove trailing slash unless root
@@ -751,7 +752,7 @@ String WebDAVHandler::getDestinationPath(WebServer& s) const {
     result = result.substring(0, result.length() - 1);
   }
 
-  return result;
+  return UserProfile::toStoragePath(result.c_str()).c_str();
 }
 
 void WebDAVHandler::urlEncodePath(const String& path, String& out) const {
@@ -781,7 +782,9 @@ void WebDAVHandler::urlEncodePath(const String& path, String& out) const {
   }
 }
 
-bool WebDAVHandler::isProtectedPath(const String& path) const {
+bool WebDAVHandler::isProtectedPath(const String& storagePath) const {
+  // Judge the path the client sees, so the profile folder itself is allowed.
+  const String path = UserProfile::toLibraryPath(storagePath.c_str());
   // Covers the credential stores' 8.3 aliases, which no segment check can map.
   if (protectedpaths::isSensitivePath(path.c_str())) return true;
 

@@ -12,6 +12,7 @@
 #include <string>
 
 #include "Bitmap.h"  // Required for BmpHeader struct definition
+#include "UserProfile.h"
 #include "activities/Activity.h"
 
 void ScreenshotUtil::buildFilename(const ScreenshotInfo& info, char* buf, size_t bufSize) {
@@ -78,10 +79,11 @@ void ScreenshotUtil::takeScreenshot(GfxRenderer& renderer) {
   ScreenshotInfo info = activityManager.getScreenshotInfo();
   char filename[256];
   buildFilename(info, filename, sizeof(filename));
+  const std::string path = UserProfile::toStoragePath(filename);
 
-  bool saved = saveFramebufferAsBmp(filename, fb, renderer.getDisplayWidth(), renderer.getDisplayHeight());
+  bool saved = saveFramebufferAsBmp(path.c_str(), fb, renderer.getDisplayWidth(), renderer.getDisplayHeight());
   if (saved) {
-    LOG_DBG("SCR", "Screenshot saved to %s", filename);
+    LOG_DBG("SCR", "Screenshot saved to %s", path.c_str());
   } else {
     LOG_ERR("SCR", "Failed to save screenshot");
     return;

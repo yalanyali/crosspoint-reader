@@ -15,6 +15,7 @@
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
+#include "UserProfile.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
@@ -86,7 +87,14 @@ FileBrowserActivity::FileBrowserActivity(GfxRenderer& renderer, MappedInputManag
                                          std::string initialPath, const Mode mode)
     : UiListActivity("FileBrowser", renderer, mappedInput, /*wantsTouchLongPress=*/true),
       mode(mode),
-      basepath(initialPath.empty() ? "/" : std::move(initialPath)) {}
+      basepath(initialPath.empty() ? rootPath() : std::move(initialPath)) {}
+
+// Firmware is device-wide, so the picker browses the whole card.
+const char* FileBrowserActivity::rootPath() const {
+  return mode == Mode::PickFirmware ? "/" : UserProfile::libraryRoot();
+}
+
+bool FileBrowserActivity::atRoot() const { return basepath == rootPath(); }
 
 void FileBrowserActivity::loadFiles() {
   files.clear();
@@ -118,7 +126,8 @@ void FileBrowserActivity::loadFiles() {
     file.getName(fileNameBuffer.get(), NAME_BUFFER_SIZE);
     const bool isDirectory = file.isDirectory();
     if ((!SETTINGS.showHiddenFiles && fileNameBuffer[0] == '.') ||
-        strcmp(fileNameBuffer.get(), "System Volume Information") == 0) {
+        strcmp(fileNameBuffer.get(), "System Volume Information") == 0 ||
+        strcmp(fileNameBuffer.get(), ".profiles") == 0) {
       continue;
     }
 
@@ -194,7 +203,7 @@ void FileBrowserActivity::prewarmRowGlyphs(const int start) {
           formatFileName(c->self->files[c->first + i], c->self->rowNameBuf, sizeof(c->self->rowNameBuf));
           return c->self->rowNameBuf;
         }
-        return c->self->basepath.c_str();
+        return UserProfile::toLibraryPath(c->self->basepath.c_str());
       },
       &prewarmCtx, static_cast<uint32_t>(count) + 1);
 }
@@ -210,7 +219,7 @@ void FileBrowserActivity::onEnter() {
 
   auto root = Storage.open(basepath.c_str());
   if (!root) {
-    basepath = "/";
+    basepath = rootPath();
     loadFiles();
   } else if (!root.isDirectory()) {
     const std::string oldPath = basepath;
@@ -520,12 +529,12 @@ bool FileBrowserActivity::handleCustomInput() {
   // Long press BACK (1s+) goes to root folder (Books mode only).
   // In firmware-pick mode we keep navigation simple: short Back = up dir / cancel.
   if (mode == Mode::Books && mappedInput.wasReleased(MappedInputManager::Button::Back) &&
-      mappedInput.getHeldTime() >= GO_HOME_MS && basepath != "/") {
+      mappedInput.getHeldTime() >= GO_HOME_MS && !atRoot()) {
     {
       // buildScreen() runs on the render task and reads basepath plus `files`
       // through the row provider; mutate only under the render lock.
       RenderLock lock(*this);
-      basepath = "/";
+      basepath = rootPath();
       loadFiles();
       nav.selected = 0;
       nav.top = 0;
@@ -552,7 +561,7 @@ bool FileBrowserActivity::handleButtons() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // Short press: go up one directory, or go home if at root
     if (mappedInput.getHeldTime() < GO_HOME_MS) {
-      if (basepath != "/") {
+      if (!atRoot()) {
         const std::string oldPath = basepath;
 
         {
@@ -616,7 +625,7 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
     const int pathY =
         band.y + metrics.verticalSpacing / 2 + (band.height - metrics.verticalSpacing / 2 - pathLineHeight) / 2;
     const int pathMaxWidth = band.width - metrics.contentSidePadding * 2;
-    const char* pathStr = basepath.c_str();
+    const char* pathStr = UserProfile::toLibraryPath(basepath.c_str());
     const char* pathDisplay = pathStr;
     char leftTruncBuf[256];
     if (renderer.getTextWidth(SMALL_FONT_ID, pathStr) > pathMaxWidth) {
@@ -673,17 +682,16 @@ void FileBrowserActivity::drawChrome() {
   const auto pageWidth = renderer.getScreenWidth();
   const auto& metrics = UITheme::getInstance().getMetrics();
 
-  std::string folderName =
-      (mode == Mode::PickFirmware)
-          ? std::string(tr(STR_SELECT_FIRMWARE_FILE))
-          : ((basepath == "/") ? std::string(tr(STR_SD_CARD)) : basepath.substr(basepath.rfind('/') + 1));
+  std::string folderName = (mode == Mode::PickFirmware)
+                               ? std::string(tr(STR_SELECT_FIRMWARE_FILE))
+                               : (atRoot() ? std::string(tr(STR_SD_CARD)) : basepath.substr(basepath.rfind('/') + 1));
   // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
   // indicator; the rest of the screen renders through the app.
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, folderName.c_str());
 }
 
 void FileBrowserActivity::drawFooter() {
-  const char* backLabel = (basepath == "/") ? (mode == Mode::PickFirmware ? tr(STR_BACK) : tr(STR_HOME)) : tr(STR_BACK);
+  const char* backLabel = atRoot() ? (mode == Mode::PickFirmware ? tr(STR_BACK) : tr(STR_HOME)) : tr(STR_BACK);
   // In PickFirmware mode, Confirm on a .bin returns the path to the caller (not "open"); show
   // STR_SELECT instead. Directories in the same picker still descend, so keep STR_OPEN there.
   const bool selectingFirmwareFile = mode == Mode::PickFirmware && !files.empty() && nav.selected >= 0 &&

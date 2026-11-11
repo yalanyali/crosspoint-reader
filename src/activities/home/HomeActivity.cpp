@@ -23,6 +23,7 @@
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
+#include "UserProfile.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -75,7 +76,7 @@ void HomeActivity::fillCoverGridFromLibrary() {
     index.close();
     GUI.drawPopup(renderer, tr(STR_LIBRARY_REBUILDING));
     library::BuildStats stats;
-    if (!library::buildLibraryIndex("/", stats, SETTINGS.libraryUseMetadata != 0) ||
+    if (!library::buildLibraryIndex(UserProfile::libraryRoot(), stats, SETTINGS.libraryUseMetadata != 0) ||
         !index.open(library::libraryIndexPath())) {
       LOG_ERR("HOME", "Cannot populate cover grid from library");
       return;

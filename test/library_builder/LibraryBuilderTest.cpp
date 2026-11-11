@@ -266,6 +266,42 @@ TEST_F(LibraryBuilderTest, SubRootScansKeepNestedAndSubstringResourceNames) {
   }
 }
 
+TEST_F(LibraryBuilderTest, LibraryInAHiddenFolderKeepsItsOwnIndex) {
+  constexpr char ROOT[] = "/.profiles/2";
+  constexpr char DATA_INDEX[] = "/.profiles/2/.crosspoint/library.idx";
+  struct RestoreLocation {
+    ~RestoreLocation() { setLibraryLocation("/", "/.crosspoint"); }
+  } restore;
+  fake::add("/.profiles/2/Books/c.epub");
+  ASSERT_TRUE(setLibraryLocation(ROOT, "/.profiles/2/.crosspoint"));
+
+  EXPECT_STREQ(libraryIndexPath(), DATA_INDEX);
+  EXPECT_TRUE(isLibraryBookFile("/.profiles/2/Books/c.epub"));
+  EXPECT_FALSE(isLibraryBookFile("/.profiles/2/.crosspoint/notes.txt"));
+  EXPECT_FALSE(isLibraryBookFile("/.profiles/2-old/c.epub"));
+  ASSERT_TRUE(buildLibraryIndex(ROOT, stats));
+  {
+    LibraryIndexFile index;
+    ASSERT_TRUE(index.open(DATA_INDEX));
+    ASSERT_EQ(index.bookCount(), 1u);
+    EXPECT_EQ(pathAt(index, SortOrder::TitleAsc, 0), "/.profiles/2/Books/c.epub");
+  }
+
+  // The card-wide library never lists the hidden folder's books.
+  ASSERT_TRUE(setLibraryLocation("/", "/.crosspoint"));
+  EXPECT_STREQ(libraryIndexPath(), INDEX);
+  ASSERT_TRUE(buildLibraryIndex("/", stats));
+  LibraryIndexFile index;
+  ASSERT_TRUE(index.open(INDEX));
+  EXPECT_EQ(index.bookCount(), 2u);
+}
+
+TEST(LibraryLocationTest, RejectsADataDirectoryTooLongForTheIndexPaths) {
+  const std::string longDir = "/" + std::string(60, 'x');
+  EXPECT_FALSE(setLibraryLocation("/", longDir.c_str()));
+  EXPECT_STREQ(libraryIndexPath(), INDEX);
+}
+
 TEST_F(LibraryBuilderTest, XtcTitleAndAuthorComeFromTheFile) {
   fake::add("/Comics/one.xtc");
   fake::add("/Comics/two.xtch");

@@ -15,6 +15,7 @@
 #include <HalSystem.h>
 #include <HalTiltSensor.h>
 #include <I18n.h>
+#include <LibraryBuilder.h>
 #include <Logging.h>
 #include <SPI.h>
 #include <TrustedTime.h>
@@ -39,6 +40,7 @@
 #include "OpdsTokenStore.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
+#include "UserProfile.h"
 #include "WifiCredentialStore.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
@@ -644,6 +646,8 @@ void setup() {
 
   HalSystem::checkPanic();
 
+  UserProfile::load();
+  library::setLibraryLocation(UserProfile::libraryRoot(), UserProfile::dataDir());
   APP_STATE.loadFromFile();
   const bool isSleepWake = wakeupReason == HalGPIO::WakeupReason::PowerButton;
   const bool isPersistedSleepWake = isSleepWake && !APP_STATE.showBootScreen;

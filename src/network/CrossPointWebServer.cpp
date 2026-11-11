@@ -44,6 +44,7 @@
 #include "ProtectedPaths.h"
 #include "SdCardFontSystem.h"
 #include "SettingsList.h"
+#include "UserProfile.h"
 #include "WebDAVHandler.h"
 #include "WifiCredentialStore.h"
 #include "WifiPowerSaveGuard.h"
@@ -165,14 +166,15 @@ void closeIdleWsClients(WebSocketsServer& ws) {
   }
 }
 
+// Normalizes a file manager path and maps it into the active profile's library.
 String normalizeWebPath(const String& inputPath) {
   if (inputPath.isEmpty() || inputPath == "/") {
-    return "/";
+    return UserProfile::libraryRoot();
   }
   std::string normalized = FsHelpers::normalisePath(inputPath.c_str());
   String result = normalized.c_str();
   if (result.isEmpty()) {
-    return "/";
+    return UserProfile::libraryRoot();
   }
   if (!result.startsWith("/")) {
     result = "/" + result;
@@ -180,7 +182,7 @@ String normalizeWebPath(const String& inputPath) {
   if (result.length() > 1 && result.endsWith("/")) {
     result = result.substring(0, result.length() - 1);
   }
-  return result;
+  return UserProfile::toStoragePath(result.c_str()).c_str();
 }
 
 bool isProtectedItemName(const String& name) {
@@ -841,10 +843,7 @@ void CrossPointWebServer::handleFileList() const {
 
 void CrossPointWebServer::handleFileListData() const {
   // Get current path from query string (default to root)
-  String currentPath = "/";
-  if (server->hasArg("path")) {
-    currentPath = normalizeWebPath(server->arg("path"));
-  }
+  const String currentPath = normalizeWebPath(server->arg("path"));
 
   server->setContentLength(CONTENT_LENGTH_UNKNOWN);
   server->send(200, "application/json", "");
@@ -908,7 +907,7 @@ void CrossPointWebServer::handleDownload() const {
   }
 
   String itemPath = normalizeWebPath(server->arg("path"));
-  if (itemPath.isEmpty() || itemPath == "/") {
+  if (itemPath.isEmpty() || UserProfile::isLibraryRoot(itemPath.c_str())) {
     server->send(400, "text/plain", "Invalid path");
     return;
   }
@@ -1040,11 +1039,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
     // Get upload path from query parameter (defaults to root if not specified)
     // Note: We use query parameter instead of form data because multipart form
     // fields aren't available until after file upload completes
-    if (server->hasArg("path")) {
-      state.path = normalizeWebPath(server->arg("path"));
-    } else {
-      state.path = "/";
-    }
+    state.path = normalizeWebPath(server->arg("path"));
 
     LOG_DBG("WEB", "[UPLOAD] START: %s to path: %s", state.fileName.c_str(), state.path.c_str());
     LOG_DBG("WEB", "[UPLOAD] Free heap: %d bytes", ESP.getFreeHeap());
@@ -1233,10 +1228,7 @@ void CrossPointWebServer::handleCreateFolder() const {
   }
 
   // Get parent path
-  String parentPath = "/";
-  if (server->hasArg("path")) {
-    parentPath = normalizeWebPath(server->arg("path"));
-  }
+  const String parentPath = normalizeWebPath(server->arg("path"));
 
   // Build full folder path
   String folderPath = parentPath;
@@ -1271,7 +1263,7 @@ void CrossPointWebServer::handleRename() const {
   String newName = server->arg("name");
   newName.trim();
 
-  if (itemPath.isEmpty() || itemPath == "/") {
+  if (itemPath.isEmpty() || UserProfile::isLibraryRoot(itemPath.c_str())) {
     server->send(400, "text/plain", "Invalid path");
     return;
   }
@@ -1357,7 +1349,7 @@ void CrossPointWebServer::handleMove() const {
   String itemPath = normalizeWebPath(server->arg("path"));
   String destPath = normalizeWebPath(server->arg("dest"));
 
-  if (itemPath.isEmpty() || itemPath == "/") {
+  if (itemPath.isEmpty() || UserProfile::isLibraryRoot(itemPath.c_str())) {
     server->send(400, "text/plain", "Invalid path");
     return;
   }
@@ -1371,7 +1363,7 @@ void CrossPointWebServer::handleMove() const {
     server->send(403, "text/plain", "Cannot move protected item");
     return;
   }
-  if (destPath != "/") {
+  if (!UserProfile::isLibraryRoot(destPath.c_str())) {
     const String destName = destPath.substring(destPath.lastIndexOf('/') + 1);
     if (isProtectedItemName(destName)) {
       server->send(403, "text/plain", "Cannot move into protected folder");
@@ -1491,7 +1483,7 @@ void CrossPointWebServer::handleDelete() const {
     auto itemPath = normalizeWebPath(p.as<String>());
 
     // Validate path
-    if (itemPath.isEmpty() || itemPath == "/") {
+    if (itemPath.isEmpty() || UserProfile::isLibraryRoot(itemPath.c_str())) {
       failedItems += itemPath + " (cannot delete root); ";
       allSuccess = false;
       continue;
